@@ -79,7 +79,7 @@ def page(path, title, body, *, game=None, sub="", description=None, sitemap=True
     subnav = ""
     if game:
         base = f"{root}{game['slug']}/"
-        tabs = [("", "最新開獎", "home"), ("check.html", "對獎", "check"),
+        tabs = [("", "最新開獎", "home"), ("backtest.html", "號碼回測", "backtest"),
                 ("stats.html", "號碼統計", "stats"), ("history/", "歷史紀錄", "history")]
         if game["kind"] == "combo":  # 統計跟母玩法一樣，不另外做
             tabs = [t for t in tabs if t[2] != "stats"]
@@ -152,7 +152,7 @@ def latest_card(game, d, prefix=""):
     return f"""<div class="card">
   {balls(game, d)}
   <p class="meta">{order}銷售金額：{money(d['sales'])} 元</p>
-  <div class="row"><a class="btn primary" href="{prefix}check.html">我要對獎 →</a>
+  <div class="row"><a class="btn primary" href="{prefix}backtest.html">號碼回測 →</a>
   <a class="btn" href="{prefix}draw/{d['period']}.html">本期獎金明細</a></div>
 </div>"""
 
@@ -349,7 +349,7 @@ def build_game_home(game, draws, st):
         special = f"，{game['special_label']} {latest['special']:02d}"
     page(f"{game['slug']}/index.html", f"{game['name']}開獎號碼", body, game=game, sub="home",
          description=f"{game['name']}第 {latest['period']} 期開獎號碼：{fmt_nums(game, latest['numbers'])}"
-                     f"{special}。最新開獎、對獎、歷史紀錄與號碼統計。")
+                     f"{special}。最新開獎、號碼回測、歷史紀錄與號碼統計。")
 
 
 def checker_cfg(game):
@@ -364,13 +364,13 @@ def checker_cfg(game):
     return escape(json.dumps(cfg, ensure_ascii=False))
 
 
-def build_check(game):
+def build_backtest(game):
     if game["kind"] == "digits":
         inputs = "".join(f'<input inputmode="numeric" maxlength="1" aria-label="{p}">'
                          for p in POSITIONS[game["digits"]])
         picker = f"<p>依序輸入 {game['digits']} 個數字（{'、'.join(POSITIONS[game['digits']])}）</p>" \
                  f'<div class="digits">{inputs}</div>'
-        intro = f"輸入你的 {game['digits']} 個數字，比對正彩是否中獎；也可以看這組號碼歷年開出過幾次。"
+        intro = f"輸入 {game['digits']} 個數字，看這組號碼從 {BY_SLUG[game['slug']]['first_month'][0]} 年至今開出過幾次正彩。"
         rules = """<p>「正彩」須號碼與順序完全相同。「組彩」只要號碼相同、不論順序，獎金依號碼組成而定；
   其他玩法（對彩等）的中獎條件與倍數請以台灣彩券公告為準。</p>"""
     else:
@@ -379,7 +379,7 @@ def build_check(game):
             zone = f'<p>{game["special_label"]}選 1 個號碼</p><div class="picker zone"></div>'
         picker = (f'<p>第一區已選 <b class="count">0</b> / {game["pick"]} 個號碼</p>'
                   f'<div class="picker main"></div>{zone}')
-        intro = f"選 {game['pick']} 個號碼，馬上知道有沒有中獎；也可以回測這組號碼歷年會中幾次。"
+        intro = f"選 {game['pick']} 個號碼，看看如果從第一期開始每期都買這組號碼，到現在會中幾次、是賺是賠。"
         conds_text = []
         for _, name, conds in game["prizes"]:
             parts = []
@@ -397,7 +397,7 @@ def build_check(game):
         rules += "實際兌獎以台灣彩券公告為準，高額獎金需扣稅。</p>"
 
     body = f"""
-<h1>{game['name']}對獎</h1>
+<h1>{game['name']}號碼回測</h1>
 <p class="sub">{intro}</p>
 <div class="card" data-checker data-src="draws.json" data-cfg="{checker_cfg(game)}">
   {picker}
@@ -406,17 +406,17 @@ def build_check(game):
     <button class="btn" data-act="clear" type="button">清除</button>
   </div>
   <div class="row">
-    <select aria-label="選擇期別"><option>資料載入中…</option></select>
-    <button class="btn primary" data-act="check" type="button" disabled>對獎</button>
-    <button class="btn" data-act="history" type="button" disabled>歷史回測</button>
+    <button class="btn primary" data-act="history" type="button" disabled>開始回測</button>
   </div>
   <div class="result" aria-live="polite"></div>
 </div>
 <div class="ad"></div>
 <div class="card"><h2>{game['name']}中獎規則</h2>{rules}</div>
+<p class="note">要對最新一期的彩券，用台灣彩券官方 APP 掃描彩券上的 QR Code 最方便。</p>
 """
-    page(f"{game['slug']}/check.html", f"{game['name']}對獎", body, game=game, sub="check",
-         description=f"{game['name']}線上對獎：輸入號碼立即比對最新或任一期開獎結果，並可回測歷年中獎紀錄。")
+    page(f"{game['slug']}/backtest.html", f"{game['name']}號碼回測", body, game=game, sub="backtest",
+         description=f"{game['name']}號碼回測：輸入一組號碼，算出從過去每期都買到現在會中幾次、總獎金與花費。")
+    redirect(f"{game['slug']}/check.html", f"{game['slug']}/backtest.html")
 
 
 def build_history(game, draws):
@@ -469,7 +469,7 @@ def build_draws(game, draws):
 <div class="ad"></div>
 <div class="card"><h2>各獎項中獎情形</h2>{prize_table(d)}</div>
 {nav}
-<p><a href="../check.html">用這期對獎 →</a>　<a href="../history/{d['date'][:4]}.html">{d['date'][:4]} 年所有開獎紀錄</a></p>
+<p><a href="../history/{d['date'][:4]}.html">{d['date'][:4]} 年所有開獎紀錄</a></p>
 """
         page(f"{slug}/draw/{d['period']}.html", f"{game['name']}第 {d['period']} 期開獎號碼", body,
              game=game, sub="history",
@@ -480,14 +480,14 @@ def build_draws(game, draws):
 def build_game(game, draws):
     st = pick_stats(game, draws) if game["kind"] == "pick" else None
     build_game_home(game, draws, st)
-    build_check(game)
+    build_backtest(game)
     if st:
         build_pick_stats(game, draws, st)
     else:
         build_digit_stats(game, draws)
     build_history(game, draws)
     build_draws(game, draws)
-    # 給對獎工具用的精簡資料：[期別, 日期, 號碼, 特別號/第二區, 各獎項每注獎金]
+    # 給號碼回測用的精簡資料：[期別, 日期, 號碼, 特別號/第二區, 各獎項每注獎金]
     slim = [[d["period"], d["date"], d["numbers"], d["special"],
              [p["amount"] for p in d["prizes"]]] for d in draws]
     (OUT / game["slug"] / "draws.json").write_text(
@@ -525,7 +525,7 @@ def build_combo(game, draws):
 <div class="card">
   {balls(parent, latest)}
   <p class="meta">{game['name']}使用{parent['name']}同一期的開獎號碼。</p>
-  <div class="row"><a class="btn primary" href="check.html">我要對獎 →</a>
+  <div class="row"><a class="btn primary" href="backtest.html">號碼回測 →</a>
   <a class="btn" href="{pslug}draw/{latest['period']}.html">{parent['name']}本期明細</a></div>
 </div>
 <div class="ad"></div>
@@ -539,15 +539,15 @@ def build_combo(game, draws):
 """
     page(f"{game['slug']}/index.html", f"{game['name']}開獎號碼", body, game=game, sub="home",
          description=f"{game['name']}第 {latest['period']} 期開獎號碼：{fmt_nums(parent, latest['numbers'])}。"
-                     f"{game['name']}玩法、獎金、中獎機率與線上對獎。")
+                     f"{game['name']}玩法、獎金、中獎機率與號碼回測。")
 
     cfg = escape(json.dumps({"kind": "combo", "pool": game["pool"], "price": game["price"],
                              "plays": [{"k": k, "name": n, "prize": p} for k, n, p in game["plays"]]},
                             ensure_ascii=False))
     ks = [k for k, _, _ in game["plays"]]
     body = f"""
-<h1>{game['name']}對獎</h1>
-<p class="sub">選 {ks[0]}～{ks[-1]} 個號碼（選幾個就是幾合），馬上知道有沒有中獎；也可以回測這組號碼歷年會中幾次。</p>
+<h1>{game['name']}號碼回測</h1>
+<p class="sub">選 {ks[0]}～{ks[-1]} 個號碼（選幾個就是幾合），看看如果每期都買這組號碼，到現在會中幾次。</p>
 <div class="card" data-checker data-src="{pslug}draws.json" data-cfg="{cfg}">
   <p>已選 <b class="count">0</b> 個號碼（{'、'.join(f'{k} 個＝{n}' for k, n, _ in game['plays'])}）</p>
   <div class="picker main"></div>
@@ -556,17 +556,16 @@ def build_combo(game, draws):
     <button class="btn" data-act="clear" type="button">清除</button>
   </div>
   <div class="row">
-    <select aria-label="選擇期別"><option>資料載入中…</option></select>
-    <button class="btn primary" data-act="check" type="button" disabled>對獎</button>
-    <button class="btn" data-act="history" type="button" disabled>歷史回測</button>
+    <button class="btn primary" data-act="history" type="button" disabled>開始回測</button>
   </div>
   <div class="result" aria-live="polite"></div>
 </div>
 <div class="ad"></div>
 <div class="card"><h2>{game['name']}中獎規則</h2>{combo_rules(game)}</div>
 """
-    page(f"{game['slug']}/check.html", f"{game['name']}對獎", body, game=game, sub="check",
-         description=f"{game['name']}線上對獎：二合、三合、四合立即比對任一期開獎結果，並可回測歷年中獎紀錄。")
+    page(f"{game['slug']}/backtest.html", f"{game['name']}號碼回測", body, game=game, sub="backtest",
+         description=f"{game['name']}號碼回測：二合、三合、四合號碼歷年會中幾次、總獎金與花費。")
+    redirect(f"{game['slug']}/check.html", f"{game['slug']}/backtest.html")
 
     years = sorted({d["date"][:4] for d in plain}, reverse=True)
     for y in years:
@@ -661,7 +660,7 @@ def build_bingo(game, draws):
   {bingo_balls(latest, small=False)}
   <p class="meta">超級獎號：{latest['super']:02d}　猜大小：{latest['big']}　猜單雙：{latest['odd']}
   開出順序：{' '.join(f'{n:02d}' for n in latest['order'])}</p>
-  <div class="row"><a class="btn primary" href="check.html">我要對獎 →</a>
+  <div class="row"><a class="btn primary" href="backtest.html">號碼回測 →</a>
   <a class="btn" href="day/{latest['date']}.html">{latest['date']} 全部期數</a></div>
 </div>
 <p class="note">本站每天自動更新兩次（晚上 10:30、早上 8:30），最新幾期請以台灣彩券官網為準。</p>
@@ -674,7 +673,7 @@ def build_bingo(game, draws):
 """
     page(f"{slug}/index.html", "賓果賓果開獎號碼", body, game=game, sub="home",
          description=f"賓果賓果第 {latest['term']} 期開獎號碼、超級獎號 {latest['super']:02d}。"
-                     "每天開獎紀錄、線上對獎、號碼統計。")
+                     "每天開獎紀錄、號碼回測、號碼統計。")
 
     # 每天一頁
     out_days = OUT / slug / "days"
@@ -694,7 +693,7 @@ def build_bingo(game, draws):
 <div class="card"><div class="scroll"><table>{BINGO_HEAD}<tbody>{bingo_rows(rows)}</tbody></table></div></div>
 <p class="meta">當天開出次數最多的超級獎號：{'、'.join(f'{n:02d}（{c} 次）' for n, c in supers)}</p>
 {nav}
-<p><a href="../check.html">用這天的號碼對獎 →</a>　<a href="../history/{day[:4]}.html">{day[:4]} 年所有日期</a></p>
+<p><a href="../backtest.html">用這天的號碼回測 →</a>　<a href="../history/{day[:4]}.html">{day[:4]} 年所有日期</a></p>
 """
         page(f"{slug}/day/{day}.html", f"{day} 賓果賓果開獎號碼", body, game=game, sub="history",
              description=f"{day} 賓果賓果全部 {len(rows)} 期開獎號碼、超級獎號、猜大小與單雙結果。")
@@ -781,8 +780,8 @@ def build_bingo(game, draws):
     cfg = escape(json.dumps({"price": game["price"],
                              "stars": {s: pays for s, pays in game["stars"].items()}}))
     body = f"""
-<h1>賓果賓果對獎</h1>
-<p class="sub">選 1～10 個號碼（選幾個就是幾星），再選日期，一次比對當天所有期數。</p>
+<h1>賓果賓果號碼回測</h1>
+<p class="sub">選 1～10 個號碼（選幾個就是幾星），再選日期，看看那天每期都買這組號碼會中幾次、是賺是賠。</p>
 <div class="card" data-bingo data-cfg="{cfg}">
   <p>已選 <b class="count">0</b> / 10 個號碼</p>
   <div class="picker main bingo"></div>
@@ -792,15 +791,16 @@ def build_bingo(game, draws):
   </div>
   <div class="row">
     <select aria-label="選擇日期"><option>資料載入中…</option></select>
-    <button class="btn primary" data-act="check" type="button" disabled>對獎</button>
+    <button class="btn primary" data-act="check" type="button" disabled>開始回測</button>
   </div>
   <div class="result" aria-live="polite"></div>
 </div>
 <div class="ad"></div>
 <div class="card"><h2>賓果賓果中獎規則</h2>{bingo_rules(game)}</div>
 """
-    page(f"{slug}/check.html", "賓果賓果對獎", body, game=game, sub="check",
-         description="賓果賓果線上對獎：選 1～10 星號碼，一次比對某天所有期數，算出中獎期數與總獎金。")
+    page(f"{slug}/backtest.html", "賓果賓果號碼回測", body, game=game, sub="backtest",
+         description="賓果賓果號碼回測：選 1～10 星號碼，看某一天每期都買會中幾次、總獎金與花費。")
+    redirect(f"{slug}/check.html", f"{slug}/backtest.html")
 
 
 # ---------- 全站頁面 ----------
@@ -829,7 +829,7 @@ def build_home(all_draws):
   {nums}
   <p class="meta">{g['schedule']}</p>
   <div class="row" style="margin-top:0">
-    <a class="btn" href="{g['slug']}/check.html">對獎</a>
+    <a class="btn" href="{g['slug']}/backtest.html">回測</a>
     {stats}
     <a class="btn" href="{g['slug']}/history/">歷史</a>
   </div>
@@ -841,7 +841,7 @@ def build_home(all_draws):
 <div class="ad"></div>
 <div class="card">
   <h2>本站提供</h2>
-  <p>各玩法最新開獎號碼、線上對獎與歷史回測（看看一組號碼從過去買到現在會中幾次）、每期獎金明細、
+  <p>各玩法最新開獎號碼、號碼回測（看看一組號碼從過去買到現在會中幾次）、每期獎金明細、
   歷年開獎紀錄，以及號碼出現次數、遺漏期數等統計。</p>
   <p class="note">統計只是整理過去的結果，彩券每期都是獨立隨機開獎，任何方法都無法預測號碼。</p>
 </div>
@@ -853,12 +853,12 @@ def build_about():
     body = f"""
 <h1>關於本站</h1>
 <div class="card">
-  <p>{escape(CFG['name'])}整理台灣彩券公開的開獎資料，提供開獎查詢、對獎與統計功能。
+  <p>{escape(CFG['name'])}整理台灣彩券公開的開獎資料，提供開獎查詢、號碼回測與統計功能。
   資料於每期開獎後自動更新，若與官方公告不同，以台灣彩券公告為準。</p>
   <p>本站與台灣彩券股份有限公司無任何關係。所有統計僅供參考與娛樂，彩券開獎為隨機結果，
   本站不提供任何「預測」或「明牌」，也不保證任何中獎機率。</p>
   <h2>隱私權政策</h2>
-  <p>本站不要求註冊，對獎時輸入的號碼只在你的瀏覽器中計算，不會傳回伺服器。</p>
+  <p>本站不要求註冊，回測時輸入的號碼只在你的瀏覽器中計算，不會傳回伺服器。</p>
   <p>本站可能使用 Google Analytics 分析流量，並使用 Google AdSense 等第三方廣告服務。
   這些服務可能使用 Cookie 依據你過去造訪本站或其他網站的紀錄顯示廣告。
   你可以到 <a href="https://adssettings.google.com/" rel="nofollow">Google 廣告設定</a> 停用個人化廣告。</p>
@@ -869,7 +869,7 @@ def build_about():
 
 def build_legacy_redirects(lotto649):
     """第一版網站只有大樂透、放在根目錄，舊網址轉到 lotto649/"""
-    redirect("check.html", "lotto649/check.html")
+    redirect("check.html", "lotto649/backtest.html")
     redirect("stats.html", "lotto649/stats.html")
     redirect("history/index.html", "lotto649/history/")
     for y in {d["date"][:4] for d in lotto649}:

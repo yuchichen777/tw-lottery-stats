@@ -1,24 +1,8 @@
-// 對獎工具 + 表格排序，不依賴任何套件
-// 對獎設定由 build.py 寫在 data-cfg 裡；開獎資料格式：[期別, 日期, 號碼, 特別號/第二區, 各獎項每注獎金]
+// 號碼回測 + 表格排序，不依賴任何套件
+// 回測設定由 build.py 寫在 data-cfg 裡；開獎資料格式：[期別, 日期, 號碼, 特別號/第二區, 各獎項每注獎金]
 (function () {
   function fmt(n) { return n.toLocaleString("zh-TW"); }
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
-
-  function ballsHtml(cfg, d, hitMain, hitSpecial) {
-    if (cfg.kind === "digits") {
-      return d[2].map(function (n, i) {
-        return '<span class="ball sm digit' + (hitMain[i] ? " hit" : "") + '">' + n + "</span>";
-      }).join("");
-    }
-    var h = d[2].map(function (n) {
-      return '<span class="ball sm' + (hitMain.indexOf(n) >= 0 ? " hit" : "") + '">' + pad(n) + "</span>";
-    }).join("");
-    if (d[3] !== null && cfg.kind !== "combo") {
-      h += '<span class="plus">+</span><span class="ball sm sp' + (hitSpecial ? " hit" : "") + '">' +
-        pad(d[3]) + "</span>";
-    }
-    return h;
-  }
 
   function makePicker(el, from, to, max, onChange) {
     var picked = [];
@@ -62,8 +46,6 @@
   function initChecker(box) {
     var cfg = JSON.parse(box.dataset.cfg);
     var draws = null;
-    var select = box.querySelector("select");
-    var btnCheck = box.querySelector("[data-act=check]");
     var btnHistory = box.querySelector("[data-act=history]");
     var out = box.querySelector(".result");
     var count = box.querySelector(".count");
@@ -86,7 +68,6 @@
     }
     function refresh() {
       if (count) count.textContent = main.get().length;
-      btnCheck.disabled = !ready();
       btnHistory.disabled = !ready();
     }
 
@@ -164,22 +145,6 @@
       return { tier: tier, hitMain: hitMain, hitSpecial: s, text: text };
     }
 
-    btnCheck.addEventListener("click", function () {
-      var d = draws[select.selectedIndex];
-      var r = judge(d);
-      var msg = "第 " + d[0] + " 期（" + d[1] + "）：" + r.text;
-      if (r.tier >= 0) {
-        var amt = cfg.kind === "combo" ? r.prize : d[4][r.tier];
-        msg += ' → <span class="win">' + cfg.tiers[r.tier].name +
-          (amt ? "，每注 " + fmt(amt) + " 元" : "（該期無人中此獎，官方未公布每注獎金）") + "</span>";
-      } else if (!r.same) {
-        msg += (r.text ? " → " : "") + "沒有中獎";
-      }
-      out.innerHTML = '<div class="balls">' + ballsHtml(cfg, d, r.hitMain, r.hitSpecial) +
-        "</div><p>" + msg + "</p>";
-      out.classList.add("show");
-    });
-
     btnHistory.addEventListener("click", function () {
       var tally = cfg.tiers.map(function () { return 0; });
       var won = 0, best = -1, bestDraw = null, same = 0, unknown = 0;
@@ -216,15 +181,12 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         draws = data;
-        select.innerHTML = data.map(function (d) {
-          return "<option>第 " + d[0] + " 期 " + d[1] + "</option>";
-        }).join("");
         refresh();
       });
     refresh();
   }
 
-  // 賓果賓果：選 1～10 個號碼，比對某一天所有期數
+  // 賓果賓果：選 1～10 個號碼，回測某一天所有期數
   function initBingo(box) {
     var cfg = JSON.parse(box.dataset.cfg);
     var select = box.querySelector("select");

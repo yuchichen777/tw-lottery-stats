@@ -82,7 +82,7 @@ th[data-sort]:hover { color: var(--text); }
 .bar { height: 10px; border-radius: 5px; background: var(--bar); min-width: 2px; }
 .bar.hot { background: var(--bar-hot); }
 
-/* 對獎 */
+/* 號碼回測 */
 .picker { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; max-width: 420px; }
 .picker button {
   aspect-ratio: 1; border-radius: 50%; border: 1px solid var(--line);
