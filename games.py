@@ -8,6 +8,7 @@ GAMES = [
     {
         "slug": "lotto649",
         "name": "大樂透",
+        "alias": "樂透",
         "endpoint": "Lotto649Result",
         "res_key": "lotto649Res",
         "first_month": (2007, 1),
@@ -59,6 +60,7 @@ GAMES = [
     {
         "slug": "daily539",
         "name": "今彩539",
+        "alias": "539",
         "endpoint": "Daily539Result",
         "res_key": "daily539Res",
         "first_month": (2007, 1),

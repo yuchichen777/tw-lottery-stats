@@ -134,3 +134,7 @@ footer a { color: var(--muted); }
 .bingo-nums b { color: var(--special); }
 .picker.bingo { gap: 4px; }
 .picker.bingo button { min-width: 0; padding: 0; font-size: .85rem; }
+.freq { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+.freq div { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 8px; font-variant-numeric: tabular-nums; }
+.freq div.hot { background: var(--brand-soft); font-weight: 700; }
+.card[id] { scroll-margin-top: 12px; }

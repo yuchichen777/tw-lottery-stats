@@ -23,6 +23,7 @@ RECENT = 100  # 「近期」統計用的期數
 POSITIONS = {3: ["百位", "十位", "個位"], 4: ["千位", "百位", "十位", "個位"]}
 
 pages = []  # 給 sitemap 用
+YEARS = {}  # slug → 有資料的年份，給「同年其他玩法」連結用
 
 
 def money(n):
@@ -419,30 +420,187 @@ def build_backtest(game):
     redirect(f"{game['slug']}/check.html", f"{game['slug']}/backtest.html")
 
 
+def year_nav(years, y, link=lambda x: f"{x}.html"):
+    i = years.index(y)  # years 由新到舊
+    older = years[i + 1] if i + 1 < len(years) else None
+    newer = years[i - 1] if i > 0 else None
+    return '<div class="prevnext">' + (
+        f'<a href="{link(older)}">← {older} 年</a>' if older else "<span></span>") + (
+        f'<a href="{link(newer)}">{newer} 年 →</a>' if newer else "<span></span>") + "</div>"
+
+
+def month_tables(ds, head, row):
+    """依月份分組的表格；ds 由新到舊"""
+    months = {}
+    for d in ds:
+        months.setdefault(int(d["date"][5:7]), []).append(d)
+    jump = '<div class="pager">' + "".join(
+        f'<a href="#m{m}">{m} 月</a>' for m in sorted(months)) + "</div>"
+    blocks = "".join(
+        f'<div class="card" id="m{m}"><h2>{m} 月（{len(rows)} 期）</h2><div class="scroll"><table>'
+        f'{head}<tbody>{"".join(row(d) for d in rows)}</tbody></table></div></div>'
+        for m, rows in months.items())
+    return jump, blocks
+
+
+def same_year_links(game, y, root="../../"):
+    links = [f'<a href="{root}{g["slug"]}/history/{y}.html">{y} 年{g["name"]}</a>'
+             for g in GAMES if g is not game and y in YEARS.get(g.get("parent", g["slug"]), ())
+             and g["kind"] != "bingo"]
+    if "bingo" in YEARS and y in YEARS["bingo"] and game["slug"] != "bingo":
+        links.append(f'<a href="{root}bingo/history/{y}.html">{y} 年賓果賓果</a>')
+    return f'<div class="card"><h2>{y} 年其他玩法開獎號碼</h2><div class="pager">{"".join(links)}</div></div>' if links else ""
+
+
+def breadcrumb(items):
+    base = CFG["base_url"].rstrip("/")
+    data = {"@context": "https://schema.org", "@type": "BreadcrumbList", "itemListElement": [
+        {"@type": "ListItem", "position": i + 1, "name": name, "item": f"{base}/{url}"}
+        for i, (name, url) in enumerate(items)]}
+    return f'<script type="application/ld+json">{json.dumps(data, ensure_ascii=False)}</script>\n'
+
+
+def pick_year_summary(game, ds):
+    pool = range(1, game["pool"] + 1)
+    c = Counter(n for d in ds for n in d["numbers"])
+    hot = sorted(pool, key=lambda n: (-c[n], n))[:5]
+    cold = sorted(pool, key=lambda n: (c[n], n))[:5]
+    jp = [d for d in ds if d["prizes"][0]["winners"]]
+    top = max(jp, key=lambda d: d["prizes"][0]["amount"] or 0) if jp else None
+    sp = Counter(d["special"] for d in ds if d["special"] is not None)
+    return {"c": c, "hot": hot, "cold": cold, "jp": jp, "top": top, "sp": sp,
+            "sales": sum(d["sales"] or 0 for d in ds),
+            "consec": sum(any(b - a == 1 for a, b in zip(d["numbers"], d["numbers"][1:])) for d in ds)}
+
+
+def digit_year_summary(game, ds):
+    n = game["digits"]
+    pos = [Counter(d["numbers"][i] for d in ds) for i in range(n)]
+    return {"pos": pos, "hot": [max(range(10), key=lambda v: (p[v], -v)) for p in pos],
+            "same": sum(len(set(d["numbers"])) == 1 for d in ds),
+            "winners": sum(d["prizes"][0]["winners"] for d in ds),
+            "sales": sum(d["sales"] or 0 for d in ds)}
+
+
 def build_history(game, draws):
+    slug, name = game["slug"], game["name"]
+    first = game["prizes"][0][1]
     years = sorted({d["date"][:4] for d in draws}, reverse=True)
+    by_year = {y: [d for d in draws if d["date"].startswith(y)] for y in years}
+    current = draws[0]["date"][:4]
+    overview = []
     for y in years:
-        pager = "".join(
-            f'<a href="{x}.html"{" class=\"on\"" if x == y else ""}>{x}</a>' for x in years)
-        rows = "".join(
+        ds = by_year[y]
+        cnt = len(ds)
+        span = f"第 {ds[-1]['period']}～{ds[0]['period']} 期"
+        ongoing = "（持續更新中）" if y == current and game["active"] else ""
+        pager = "".join(f'<a href="{x}.html"{" class=\"on\"" if x == y else ""}>{x}</a>' for x in years)
+        if game["kind"] == "pick":
+            s = pick_year_summary(game, ds)
+            k = game["pick"]
+            hot_txt = "、".join(f"{n:02d}（{s['c'][n]} 次）" for n in s["hot"][:3])
+            text = (f"{y} 年{name}共開獎 {cnt} 期{ongoing}（{span}）。全年最常開出的號碼是 {hot_txt}，"
+                    f"開出次數最少的是 {s['cold'][0]:02d}（{s['c'][s['cold'][0]]} 次）。")
+            if s["top"]:
+                t = s["top"]
+                text += (f"{first}共開出 {len(s['jp'])} 期、槓龜 {cnt - len(s['jp'])} 期，"
+                         f"單注最高{first}獎金為第 {t['period']} 期的 {money(t['prizes'][0]['amount'])} 元。")
+            else:
+                text += f"全年{first}都沒有人中獎。"
+            mx = max(s["c"].values()) or 1
+            freq = "".join(
+                f'<div class="{"hot" if n in s["hot"] else ""}"><span class="ball sm">{n:02d}</span>'
+                f'<span>{s["c"][n]}</span></div>' for n in range(1, game["pool"] + 1))
+            sp_row = ""
+            if s["sp"]:
+                n0, c0 = s["sp"].most_common(1)[0]
+                sp_row = f'<tr><td>最常開出的{game["special_label"]}</td><td class="r">{n0:02d}（{c0} 次）</td></tr>'
+            top_row = (f'<tr><td>最高{first}獎金</td><td class="r"><a href="../draw/{s["top"]["period"]}.html">'
+                       f'{money(s["top"]["prizes"][0]["amount"])} 元</a></td></tr>') if s["top"] else ""
+            detail = f"""<div class="grid2">
+  <div class="card"><h2>{y} 年熱門號碼</h2>{mini_balls(s['hot'])}
+    <p class="meta">全年開出次數最多的 5 個號碼</p>
+    <h2 style="margin-top:16px">{y} 年冷門號碼</h2>{mini_balls(s['cold'])}
+    <p class="meta">全年開出次數最少的 5 個號碼</p></div>
+  <div class="card"><h2>{y} 年統計摘要</h2><table><tbody>
+    <tr><td>開獎期數</td><td class="r">{cnt} 期</td></tr>
+    <tr><td>{first}開出／槓龜</td><td class="r">{len(s['jp'])}／{cnt - len(s['jp'])} 期</td></tr>
+    {top_row}{sp_row}
+    <tr><td>有連號的期數</td><td class="r">{s['consec']} 期（{s['consec'] / cnt:.0%}）</td></tr>
+    <tr><td>全年銷售金額</td><td class="r">{money(s['sales'])} 元</td></tr>
+  </tbody></table></div>
+</div>
+<div class="card"><h2>{y} 年每個號碼開出次數</h2><div class="freq">{freq}</div>
+  <p class="note">理論上每個號碼每期開出機率是 {k}/{game['pool']}，{cnt} 期的期望次數約 {cnt * k / game['pool']:.1f} 次。
+  標色為全年前 5 名。<a href="../stats.html">看歷年完整統計 →</a></p></div>"""
+            desc_hot = " ".join(f"{n:02d}" for n in s["hot"][:3])
+            overview.append((y, cnt, mini_balls(s["hot"][:3]), f"{len(s['jp'])} 期"))
+        else:
+            s = digit_year_summary(game, ds)
+            pos_names = POSITIONS[game["digits"]]
+            hot_txt = "、".join(f"{p}最常開 {v}" for p, v in zip(pos_names, s["hot"]))
+            text = (f"{y} 年{name}共開獎 {cnt} 期{ongoing}（{span}）。{hot_txt}。"
+                    f"全年正彩中獎共 {s['winners']:,} 注，號碼全部相同（如 {'7' * game['digits']}）的有 {s['same']} 期。")
+            rows = "".join(
+                f'<tr><td><span class="ball sm digit">{v}</span></td>' +
+                "".join(f'<td class="r">{s["pos"][i][v]}</td>' for i in range(game["digits"])) + "</tr>"
+                for v in range(10))
+            detail = f"""<div class="card"><h2>{y} 年各位數開出次數</h2><div class="scroll"><table>
+  <thead><tr><th>數字</th>{''.join(f'<th class="r">{p}</th>' for p in pos_names)}</tr></thead>
+  <tbody>{rows}</tbody></table></div>
+  <p class="note">理論上每個位數開出 0～9 的機率都是 10%，{cnt} 期的期望次數約 {cnt / 10:.1f} 次。
+  全年銷售金額 {money(s['sales'])} 元。<a href="../stats.html">看歷年完整統計 →</a></p></div>"""
+            desc_hot = "、".join(f"{p}{v}" for p, v in zip(pos_names, s["hot"]))
+            overview.append((y, cnt, " ".join(str(v) for v in s["hot"]), f"{s['winners']:,} 注"))
+
+        head = (f'<thead><tr><th>期別</th><th>開獎日期</th><th>號碼</th>'
+                f'<th class="r">{first}每注獎金</th></tr></thead>')
+        jump, blocks = month_tables(ds, head, lambda d: (
             f'<tr><td><a href="../draw/{d["period"]}.html">{d["period"]}</a></td>'
             f'<td>{zh_date(d["date"])}</td><td>{balls(game, d, small=True)}</td>'
-            f'<td class="r">{money(d["prizes"][0]["amount"]) if d["prizes"][0]["winners"] else "槓龜"}</td></tr>'
-            for d in draws if d["date"].startswith(y))
-        first = game["prizes"][0][1]
+            f'<td class="r">{money(d["prizes"][0]["amount"]) if d["prizes"][0]["winners"] else "槓龜"}</td></tr>'))
         body = f"""
-<h1>{y} 年{game['name']}開獎紀錄</h1>
-<p class="sub">點期別可以看該期完整獎金明細。</p>
+<h1>{y}年{name}開獎號碼</h1>
+<p class="sub">{text}</p>
 <div class="pager">{pager}</div>
-<div class="card"><div class="scroll"><table>
-<thead><tr><th>期別</th><th>開獎日期</th><th>號碼</th><th class="r">{first}每注獎金</th></tr></thead>
-<tbody>{rows}</tbody></table></div></div>
+{detail}
+<div class="ad"></div>
+<h2>{y} 年{name}每期開獎號碼</h2>
+<p class="meta">點期別可以看該期完整獎金明細。跳到月份：</p>
+{jump}
+{blocks}
+{year_nav(years, y)}
+{same_year_links(game, y)}
+<p><a href="./">{name}歷年開獎總覽</a>　<a href="../backtest.html">號碼回測</a></p>
 """
-        page(f"{game['slug']}/history/{y}.html", f"{y} 年{game['name']}開獎紀錄", body,
+        alias = f"（{game['alias']}）" if game.get("alias") else ""
+        page(f"{slug}/history/{y}.html", f"{y}年{name}開獎號碼・全年 {cnt} 期", body,
              game=game, sub="history",
-             description=f"{y} 年{game['name']}每期開獎號碼與{first}獎金一覽。")
-    # history/ 首頁直接顯示最新年份，但 canonical 指向該年份頁
-    redirect(f"{game['slug']}/history/index.html", f"{game['slug']}/history/{years[0]}.html")
+             head=breadcrumb([(name, f"{slug}/"), ("歷年開獎", f"{slug}/history/"), (f"{y} 年", f"{slug}/history/{y}.html")]),
+             description=f"{y}年{name}{alias}開獎號碼一覽：全年 {cnt} 期每期號碼、{first}獎金，"
+                         f"依月份整理。全年熱門號碼 {desc_hot}。")
+    build_history_index(game, years, overview,
+                        ["年份", "期數", "全年熱門號碼" if game["kind"] == "pick" else "各位數最常開",
+                         f"{first}開出" if game["kind"] == "pick" else "正彩中獎"])
+
+
+def build_history_index(game, years, overview, cols):
+    slug, name = game["slug"], game["name"]
+    rows = "".join(
+        f'<tr><td><a href="{y}.html">{y} 年</a></td><td class="r">{cnt}</td><td>{hot}</td>'
+        + (f'<td class="r">{extra}</td>' if extra is not None else "") + "</tr>"
+        for y, cnt, hot, extra in overview)
+    th = "".join(f'<th{" class=\"r\"" if i in (1, 3) else ""}>{c}</th>' for i, c in enumerate(cols))
+    body = f"""
+<h1>{name}歷年開獎號碼</h1>
+<p class="sub">{years[-1]}～{years[0]} 年共 {sum(o[1] for o in overview):,} 期{name}開獎紀錄，選擇年份查看每期號碼。</p>
+<div class="pager">{''.join(f'<a href="{y}.html">{y}</a>' for y in years)}</div>
+<div class="card"><div class="scroll"><table><thead><tr>{th}</tr></thead><tbody>{rows}</tbody></table></div></div>
+"""
+    alias = f"（{game['alias']}）" if game.get("alias") else ""
+    page(f"{slug}/history/index.html", f"{name}歷年開獎號碼", body, game=game, sub="history",
+         head=breadcrumb([(name, f"{slug}/"), ("歷年開獎", f"{slug}/history/")]),
+         description=f"{name}{alias}{years[-1]}～{years[0]} 年歷年開獎號碼查詢，每年期數與熱門號碼總覽。")
 
 
 def build_draws(game, draws):
@@ -568,24 +726,39 @@ def build_combo(game, draws):
     redirect(f"{game['slug']}/check.html", f"{game['slug']}/backtest.html")
 
     years = sorted({d["date"][:4] for d in plain}, reverse=True)
+    overview = []
     for y in years:
+        ds = [d for d in plain if d["date"].startswith(y)]
         pager = "".join(
             f'<a href="{x}.html"{" class=\"on\"" if x == y else ""}>{x}</a>' for x in years)
-        rows = "".join(
+        c = Counter(n for d in ds for n in d["numbers"])
+        hot = sorted(range(1, game["pool"] + 1), key=lambda n: (-c[n], n))[:5]
+        overview.append((y, len(ds), mini_balls(hot[:3]), None))
+        head = '<thead><tr><th>期別</th><th>開獎日期</th><th>號碼</th></tr></thead>'
+        jump, blocks = month_tables(ds, head, lambda d: (
             f'<tr><td><a href="../{pslug}draw/{d["period"]}.html">{d["period"]}</a></td>'
-            f'<td>{zh_date(d["date"])}</td><td>{balls(parent, d, small=True)}</td></tr>'
-            for d in plain if d["date"].startswith(y))
+            f'<td>{zh_date(d["date"])}</td><td>{balls(parent, d, small=True)}</td></tr>'))
         body = f"""
-<h1>{y} 年{game['name']}開獎紀錄</h1>
-<p class="sub">{game['name']}的號碼就是{parent['name']}開出的號碼，點期別可以看該期完整明細。</p>
+<h1>{y}年{game['name']}開獎號碼</h1>
+<p class="sub">{y} 年{game['name']}共開獎 {len(ds)} 期，號碼就是{parent['name']}同期開出的號碼。
+全年最常開出 {'、'.join(f'{n:02d}（{c[n]} 次）' for n in hot[:3])}。點期別可以看該期完整明細。</p>
 <div class="pager">{pager}</div>
-<div class="card"><div class="scroll"><table>
-<thead><tr><th>期別</th><th>開獎日期</th><th>號碼</th></tr></thead>
-<tbody>{rows}</tbody></table></div></div>
+<div class="card"><h2>{y} 年熱門號碼</h2>{mini_balls(hot)}
+  <p class="meta">全年開出次數最多的 5 個號碼。<a href="../{pslug}history/{y}.html">看 {y} 年{parent['name']}完整統計 →</a></p></div>
+<div class="ad"></div>
+<p class="meta">跳到月份：</p>
+{jump}
+{blocks}
+{year_nav(years, y)}
+{same_year_links(game, y)}
+<p><a href="./">{game['name']}歷年開獎總覽</a>　<a href="../backtest.html">號碼回測</a></p>
 """
-        page(f"{game['slug']}/history/{y}.html", f"{y} 年{game['name']}開獎紀錄", body,
-             game=game, sub="history", description=f"{y} 年{game['name']}每期開獎號碼一覽。")
-    redirect(f"{game['slug']}/history/index.html", f"{game['slug']}/history/{years[0]}.html")
+        page(f"{game['slug']}/history/{y}.html", f"{y}年{game['name']}開獎號碼・全年 {len(ds)} 期", body,
+             game=game, sub="history",
+             head=breadcrumb([(game["name"], f"{game['slug']}/"), ("歷年開獎", f"{game['slug']}/history/"),
+                              (f"{y} 年", f"{game['slug']}/history/{y}.html")]),
+             description=f"{y}年{game['name']}開獎號碼一覽：全年 {len(ds)} 期每期號碼，依月份整理。")
+    build_history_index(game, years, overview, ["年份", "期數", "全年熱門號碼"])
 
 
 # ---------- 賓果賓果 ----------
@@ -912,6 +1085,8 @@ def main():
     bingo = load_bingo()
     if bingo:
         all_draws["bingo"] = bingo
+    for slug, ds in all_draws.items():
+        YEARS[slug] = {d["date"][:4] for d in ds}
 
     build_home(all_draws)
     for g in GAMES:
