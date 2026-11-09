@@ -275,3 +275,15 @@
   document.querySelectorAll("[data-bingo]").forEach(initBingo);
   document.querySelectorAll("table.sortable").forEach(initSort);
 })();
+
+// 大字體切換（記在瀏覽器裡）
+(function () {
+  var root = document.documentElement;
+  try { if (localStorage.getItem("bigFont") === "1") root.classList.add("big"); } catch (e) {}
+  document.querySelectorAll("[data-font]").forEach(function (b) {
+    b.addEventListener("click", function () {
+      var on = root.classList.toggle("big");
+      try { localStorage.setItem("bigFont", on ? "1" : "0"); } catch (e) {}
+    });
+  });
+})();

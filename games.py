@@ -104,6 +104,7 @@ GAMES = [
     {
         "slug": "3d",
         "name": "3星彩",
+        "alt": "三星彩",
         "endpoint": "3DResult",
         "res_key": "lotto3DRes",
         "first_month": (2007, 1),
@@ -120,6 +121,7 @@ GAMES = [
     {
         "slug": "4d",
         "name": "4星彩",
+        "alt": "四星彩",
         "endpoint": "4DResult",
         "res_key": "lotto4DRes",
         "first_month": (2007, 1),

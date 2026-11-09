@@ -138,3 +138,20 @@ footer a { color: var(--muted); }
 .freq div { display: flex; align-items: center; gap: 6px; padding: 4px 6px; border-radius: 8px; font-variant-numeric: tabular-nums; }
 .freq div.hot { background: var(--brand-soft); font-weight: 700; }
 .card[id] { scroll-margin-top: 12px; }
+details.card > summary { cursor: pointer; list-style: none; }
+details.card > summary::-webkit-details-marker { display: none; }
+details.card > summary h3 { display: inline; font-size: 1.05rem; margin: 0; }
+details.card > summary::before { content: "▸ "; color: var(--muted); }
+details.card[open] > summary::before { content: "▾ "; }
+details.card[open] > summary { margin-bottom: 12px; }
+.nums-t { font-variant-numeric: tabular-nums; letter-spacing: .03em; white-space: nowrap; }
+.sp-t { color: var(--special); font-weight: 700; }
+/* 大字體模式 */
+html.big body { font-size: 20px; }
+html.big .ball.sm { width: 38px; height: 38px; font-size: 1.05rem; }
+html.big .meta, html.big .note { font-size: 1rem; }
+html.big th { font-size: 1rem; }
+td > .balls { min-width: 136px; gap: 4px; }
+td > .meta { font-size: .8rem; }
+html.big td > .balls { min-width: 168px; }
+@media (max-width: 480px) { th, td { padding: 8px 4px; } }
