@@ -22,7 +22,7 @@ WEEKDAYS = "一二三四五六日"
 RECENT = 100  # 「近期」統計用的期數
 POSITIONS = {3: ["百位", "十位", "個位"], 4: ["千位", "百位", "十位", "個位"]}
 
-pages = []  # 給 sitemap 用
+pages = []  # 給 sitemap 用：(網址, lastmod 或 None)
 YEARS = {}  # slug → 有資料的年份，給「同年其他玩法」連結用
 
 
@@ -60,15 +60,19 @@ def mini_balls(nums):
         f'<span class="ball sm">{n:02d}</span>' for n in nums) + "</div>"
 
 
-def page(path, title, body, *, game=None, sub="", description=None, sitemap=True, head=""):
+def page(path, title, body, *, game=None, sub="", description=None, sitemap=True, head="",
+         noindex=False, lastmod=None):
     """寫出一個頁面。path 是相對 dist/ 的路徑，用來算出回到根目錄的 ../"""
     root = "../" * path.count("/")
     full_title = f"{title}｜{CFG['short_name']}" if title else CFG["name"]
     desc = escape(description or CFG["description"])
     url_path = path.removesuffix("index.html")
     canonical = f"{CFG['base_url'].rstrip('/')}/{url_path}"
-    if sitemap:
-        pages.append(url_path)
+    if noindex:
+        # 內容很薄的大量頁面（每期明細、賓果每日）不送進 Google 索引，避免整站被判定為低品質
+        head = '<meta name="robots" content="noindex,follow">\n' + head
+    elif sitemap:
+        pages.append((url_path, lastmod))
 
     if CFG.get("adsense_client"):
         head += ('<script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js'
@@ -587,7 +591,7 @@ def build_history(game, draws):
         else:
             title = f"{y}年{name}開獎號碼・全年 {cnt} 期"
         page(f"{slug}/history/{y}.html", title, body,
-             game=game, sub="history",
+             game=game, sub="history", lastmod=None if ongoing else ds[0]["date"],
              head=breadcrumb([(name, f"{slug}/"), ("歷年開獎", f"{slug}/history/"), (f"{y} 年", f"{slug}/history/{y}.html")]),
              description=f"{y}年{name}{alias}開獎號碼一覽：全年 {cnt} 期每期號碼、{first}獎金，"
                          f"依月份整理。全年熱門號碼 {desc_hot}。")
@@ -606,7 +610,7 @@ def order_line(game, d):
     return f'<div class="meta">開出順序 {fmt_nums(game, d["order"])}</div>'
 
 
-def build_history_index(game, years, overview, draws, cols, draw_base="../draw/", num_game=None):
+def build_history_index(game, years, overview, draws, cols, draw_base="../draw/", num_game=None, noindex=False):
     slug, name = game["slug"], game["name"]
     num_game = num_game or game
     total = sum(o[1] for o in overview)
@@ -648,7 +652,7 @@ def build_history_index(game, years, overview, draws, cols, draw_base="../draw/"
 """
     alias = game.get("alias") or game.get("alt")
     page(f"{slug}/history/index.html", f"{name}歷年開獎號碼查詢・{years[-1]}～{years[0]} 全部 {total:,} 期", body,
-         game=game, sub="history",
+         game=game, sub="history", noindex=noindex,
          head=breadcrumb([(name, f"{slug}/"), ("歷年開獎", f"{slug}/history/")]),
          description=f"{name}{f'（{alias}）' if alias else ''}歷年開獎號碼一覽：{years[-1]}～{years[0]} 年全部 {total:,} 期"
                      f"每期號碼依年份整理，含各年度熱門號碼，更新至第 {last['period']} 期。")
@@ -681,7 +685,7 @@ def build_draws(game, draws):
 <p><a href="../history/{d['date'][:4]}.html">{d['date'][:4]} 年所有開獎紀錄</a></p>
 """
         page(f"{slug}/draw/{d['period']}.html", f"{game['name']}第 {d['period']} 期開獎號碼", body,
-             game=game, sub="history",
+             game=game, sub="history", noindex=True,
              description=f"{game['name']}第 {d['period']} 期（{d['date']}）開獎號碼 "
                          f"{fmt_nums(game, d['numbers'])}{special}，各獎項中獎注數與獎金。")
 
@@ -806,12 +810,12 @@ def build_combo(game, draws):
 <p><a href="./">{game['name']}歷年開獎總覽</a>　<a href="../backtest.html">號碼回測</a></p>
 """
         page(f"{game['slug']}/history/{y}.html", f"{y}年{game['name']}開獎號碼・全年 {len(ds)} 期", body,
-             game=game, sub="history",
+             game=game, sub="history", noindex=True,
              head=breadcrumb([(game["name"], f"{game['slug']}/"), ("歷年開獎", f"{game['slug']}/history/"),
                               (f"{y} 年", f"{game['slug']}/history/{y}.html")]),
              description=f"{y}年{game['name']}開獎號碼一覽：全年 {len(ds)} 期每期號碼，依月份整理。")
     build_history_index(game, years, overview, plain, ["年份", "期數", "全年熱門號碼"],
-                        draw_base=f"../{pslug}draw/", num_game=parent)
+                        draw_base=f"../{pslug}draw/", num_game=parent, noindex=True)
 
 
 # ---------- 賓果賓果 ----------
@@ -921,7 +925,7 @@ def build_bingo(game, draws):
 {nav}
 <p><a href="../backtest.html">用這天的號碼回測 →</a>　<a href="../history/{day[:4]}.html">{day[:4]} 年所有日期</a></p>
 """
-        page(f"{slug}/day/{day}.html", f"{day} 賓果賓果開獎號碼", body, game=game, sub="history",
+        page(f"{slug}/day/{day}.html", f"{day} 賓果賓果開獎號碼", body, game=game, sub="history", noindex=True,
              description=f"{day} 賓果賓果全部 {len(rows)} 期開獎號碼、超級獎號、猜大小與單雙結果。")
         (out_days / f"{day}.json").write_text(json.dumps(
             [[d["term"], d["time"], d["order"]] for d in rows], separators=(",", ":")), encoding="utf-8")
@@ -945,7 +949,7 @@ def build_bingo(game, draws):
 <div class="pager">{pager}</div>
 {blocks}
 """
-        page(f"{slug}/history/{y}.html", f"{y} 年賓果賓果開獎紀錄", body, game=game, sub="history",
+        page(f"{slug}/history/{y}.html", f"{y} 年賓果賓果開獎紀錄", body, game=game, sub="history", noindex=True,
              description=f"{y} 年每天的賓果賓果開獎號碼查詢。")
     redirect(f"{slug}/history/index.html", f"{slug}/history/{years[0]}.html")
 
@@ -1106,8 +1110,8 @@ def build_legacy_redirects(lotto649):
 
 def build_extras(lastmod):
     base = CFG["base_url"].rstrip("/")
-    sitemap = "".join(f"<url><loc>{base}/{escape(u)}</loc><lastmod>{lastmod}</lastmod></url>\n"
-                      for u in pages)
+    sitemap = "".join(f"<url><loc>{base}/{escape(u)}</loc><lastmod>{lm or lastmod}</lastmod></url>\n"
+                      for u, lm in pages)
     (OUT / "sitemap.xml").write_text(
         '<?xml version="1.0" encoding="UTF-8"?>\n'
         f'<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n{sitemap}</urlset>\n',
@@ -1157,7 +1161,7 @@ def main():
     if "lotto649" in all_draws:
         build_legacy_redirects(all_draws["lotto649"])
     build_extras(max(d[0]["date"] for d in all_draws.values()))
-    print(f"網站已產生在 {OUT}（{len(pages)} 個頁面）")
+    print(f"網站已產生在 {OUT}（sitemap 收錄 {len(pages)} 個頁面）")
 
 
 if __name__ == "__main__":
